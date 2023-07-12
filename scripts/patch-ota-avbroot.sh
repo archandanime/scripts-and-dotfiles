@@ -22,7 +22,9 @@ export KERNELSU_PATCHED_OTA_ZIP=`echo ${BASEDIR}/output/$(basename -s .zip ${OTA
 export lineageos_build_date=`basename ${OTA_ZIP} | cut -d '-' -f3`
 export today_date=`date +%Y%m%d`
 export lineageos_build_outdate=$(( ${today_date} - ${lineageos_build_date} ))
-export lastest_magisk_release=`curl -L -s https://github.com/topjohnwu/Magisk/releases/latest | grep '<title>' | sed -e 's/<[^>]*>//g'`
+
+export lastest_magisk_release=`curl -si https://github.com/topjohnwu/Magisk/releases/latest | grep "location:" | sed -e 's/location:\ https:\/\/github.com\/topjohnwu\/Magisk\/releases\/tag\///g' | tr -d '\r'`
+export current_magisk_release=`basename -s .apk ${MAGISK_FILE} | sed -e 's/Magisk-//g'`
 
 
 show_syntax() {
@@ -33,7 +35,8 @@ show_syntax() {
 
 patch_with_magisk() {
 	echo
-	echo -e "Patching ${OTA_ZIP},\n\tusing ${MAGISK_FILE},\n\twith pre-init device: ${MAGISK_PREINIT_DEVICE}"
+	echo -e "[INFO] Patching ${OTA_ZIP},\n\tusing ${MAGISK_FILE},\n\twith pre-init device: ${MAGISK_PREINIT_DEVICE}"
+	export PATCHED_OTA_ZIP=${MAGISK_PATCHED_OTA_ZIP}
 	python avbroot/avbroot.py patch \
 	--input ${OTA_ZIP} \
 	--privkey-avb ${AVB_KEYFILE} \
@@ -44,17 +47,18 @@ patch_with_magisk() {
 	--clear-vbmeta-flags \
 	--passphrase-avb-env-var PASSPHRASE_AVB \
 	--passphrase-ota-env-var PASSPHRASE_OTA \
-	--output ${MAGISK_PATCHED_OTA_ZIP}
+	--output ${PATCHED_OTA_ZIP}
 
 	echo
-	echo "Output file: ${MAGISK_PATCHED_OTA_ZIP}"
-	echo "Lastest Magisk: ${lastest_magisk_release}"
+	[[ "${current_magisk_release}" != "${lastest_magisk_release}" ]] && echo -n "[WARNING] Magisk is outdated" || echo -n "[OK] Magisk is up-to-date"
+	echo " (current: ${current_magisk_release}, lastest: ${lastest_magisk_release})"
 
 }
 
 patch_with_kernelsu() {
 	echo
 	echo -e "Patching ${OTA_ZIP},\nusing ${KERNELSU_BOOT_IMG}"
+	PATCHED_OTA_ZIP=${KERNELSU_PATCHED_OTA_ZIP}
 	python avbroot/avbroot.py patch \
 	--input ${OTA_ZIP} \
 	--privkey-avb ${AVB_KEYFILE} \
@@ -66,14 +70,14 @@ patch_with_kernelsu() {
 	--clear-vbmeta-flags \
 	--passphrase-avb-env-var PASSPHRASE_AVB \
 	--passphrase-ota-env-var PASSPHRASE_OTA \
-	--output ${KERNELSU_PATCHED_OTA_ZIP}
+	--output ${PATCHED_OTA_ZIP}
 }
 
 
 show_syntax
 case "${@}" in
 	"")
-		echo "No argument was provided, patching with Magisk as default option"
+		echo "[INFO] No argument was provided, patching with Magisk as default option"
 		patch_with_magisk ;;
 	"magisk")
 		patch_with_magisk ;;
@@ -82,4 +86,7 @@ case "${@}" in
 	*)
 		exit 1 ;;
 esac
-echo LineageOS build is ${lineageos_build_outdate} days outdated
+#echo LineageOS build is ${lineageos_build_outdate} days old
+[[ ${lineageos_build_outdate} -gt 7 ]] && echo -n "[WARNING] LineageOS build is outdated" || echo -n "[OK] LineageOS build is up-to-date"
+echo " (${lineageos_build_outdate} days old)"
+echo "[INFO] Output file: ${PATCHED_OTA_ZIP}"
