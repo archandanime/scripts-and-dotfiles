@@ -98,7 +98,7 @@ function update_binaries() {
 	else
 		echo "[info] custota-tool is up-to-date with version ${custota_latest_ver}"
 	fi
-	[ ! -L bin/custota-tool ] && ln -s custota-tool_${avbroot_latest_ver} bin/custota-tool
+	[ ! -L bin/custota-tool ] && ln -s custota-tool_${custota_latest_ver} bin/custota-tool
 	
 }
 
