@@ -1,0 +1,48 @@
+#!/usr/bin/ash
+
+run_hook() {
+    modprobe -a -q dm-crypt >/dev/null 2>&1
+    [ "${quiet}" = "y" ] && CSQUIET=">/dev/null"
+
+    if [ -n "${cryptheader}" ]; then
+        IFS=: read cryptheader_dev cryptheader_name <<EOF
+$cryptheader
+EOF
+    fi
+
+    # This may happen if third party hooks do the crypt setup
+    if [ -b "/dev/mapper/${cryptheader_name}" ]; then
+        echo "Device ${cryptheader_name} already exists, not doing any crypt setup."
+        return 0
+    fi
+
+
+        if cryptsetup isLuks ${cryptheader_dev} >/dev/null 2>&1; then
+            # /dev/fd missing somehow
+            [ ! -d /dev/fd ] && ln -s /proc/self/fd /dev/
+            echo ""
+#            echo "Attempting to unlock ${cryptheader_dev} with TPM..."
+
+            if ! clevis-luks-unlock -d ${cryptheader_dev} -n ${cryptheader_name} >/dev/null 2>&1; then
+                err "TPM decrypt failed"
+            fi
+
+#            echo "TPM decrypt succeeded."
+
+            if [ ! -e "/dev/mapper/${cryptheader_name}" ]; then
+                err "${cryptheader_name} creation failed"
+            fi
+        else
+            err "Failed to open encryption mapping: The device ${cryptheader_dev} is not a LUKS volume and the crypto= paramater was not specified."
+        fi
+
+	if [ ! -b "/dev/mapper/${cryptheader_name}" ]; then
+	echo "[info] This happened due to changes in UEFI settings or Secure Boot settings."
+	echo "       e.g. booting unsigned/invalidly signed EFI binary, changing boot chain."
+		while [ ! -b "/dev/mapper/${cryptheader_name}" ]; do
+			cryptsetup open --type luks ${cryptheader_dev} ${cryptheader_name} && echo ""
+			sleep 1
+		done
+	fi
+}
+# vim: set ft=sh ts=4 sw=4 et:
