@@ -4,7 +4,7 @@
 #
 
 echo "[INFO] Looking for new release"
-export lastest_release=`curl -s https://downloads.openwrt.org/ | awk '/Stable Release/{p=1}p' | sed -n '/Upcoming\ Stable\ Release/,$b;p' | sed -e 's/<[^>]*>//g' | sed 's/^[[:space:]]*//' | sed -e 's/OpenWrt\ //g' | grep -x '.\{6,10\}'`
+export lastest_release=`curl -s https://downloads.openwrt.org/ | awk '/Stable Release/{p=1}p' | sed -n '/Upcoming\ Stable\ Release/,$b;p' | sed -e 's/<[^>]*>//g' | sed 's/^[[:space:]]*//' | sed -e 's/OpenWrt\ //g' | grep -x '.\{6,10\}' | head -n 1`
 export release=${lastest_release}
 export profile="xiaomi_redmi-router-ac2100"
 export target="ramips"
@@ -44,7 +44,9 @@ cd ${include_dir}/
 build_info_dir="etc/build-info.d"
 mkdir -p etc/build-info.d/
 find . -type l -o -type f -o -type d > ${build_info_dir}/included_files.txt
+echo "[info] Manifest pakages: ${manifest_packages}"
 echo "${manifest_packages}" > ${build_info_dir}/manifest_packages.txt
+echo "[info] Extra pakages: ${extra_packages}"
 echo "${extra_packages}" > ${build_info_dir}/extra_packages.txt
 echo "${builddate}" > ${build_info_dir}/build_date.txt
 sed -i "s/.*option\ description.*/\toption\ description\ \'${build_info}\'/" etc/config/system
@@ -53,7 +55,7 @@ sed -i "s/.*option\ description.*/\toption\ description\ \'${build_info}\'/" etc
 cd ../${image_builder_dir}
 mkdir -p tmp
 echo "[INFO] Building sysupgrade.bin"
-make image PROFILE="${profile}" PACKAGES="${packages}" FILES="../${include_dir}"
+make image PROFILE="${profile}" PACKAGES="${packages}" FILES="../${include_dir}" || { echo "[ERR] Image build failed" ; exit 1; }
 
 cp ../${image_builder_dir}/build_dir/target-mipsel_24kc_musl/linux-${target}_${subtarget}/tmp/${sysupgrade_bin} ..
 ls -liah ../${sysupgrade_bin}
