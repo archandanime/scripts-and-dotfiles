@@ -1,24 +1,18 @@
 #!/bin/bash
 #
+# Descritpion: 
 # This script:
 # - Checks for avbroot and custota-tool update
 # - Patchs OTA zip with kernelsu boot image
 # - Extracts boot images from patched OTA zip for flashing OTA the first time
 # - Generates Custota json and csig file for OTA server
 #
-# Results: patched OTA zip, custota json, custota csig in output/ directory
+# Input: KernelSU boot image, stock OTA zip. They should be(optional) put in input/ directory
+# Output: patched OTA zip, custota json, custota csig files in output/ directory
 #
-# How to use:
-# 1. Download latest OTA zip and kernelsu boot image
-#     OTA zip URL: https:/developers.google.com/android/ota#lynx
-#     kernelsu URL: https://github.com/tiann/kernelsu/releases/latest, download androidNN-5.10.VV_YYYY-MM-boot.img.gz 
-# 1. Run ./patch_n_create_ota.zip <OTA zip file> <kernelsu boot image>
-# 2. Put 3 files from /output directory to http server with path <document root>/OTA-lynx/
-# 3. In Custota app: Set URL: http://<IP>/Android_OTA/lynx/
-# 4. In Custota app: Check for update and install update
-# 5. Reboot your phone
 #
-# Initial setup:
+## INITIAL SETUP GUIDE:
+# - Do this when the the phone is still on stock ROM
 # 1. Reboot to fastboot and run:
 #	for flash_image in extracted-ota/*.img; do
 #		partition=$(basename "${image}")
@@ -38,6 +32,16 @@
 # 6. Reboot! Enjoy!
 #
 #
+## UPDATE GUIDE:
+# - Do this when there a patched OTA zip is has already been flashed and the bootloader is re-locked
+# 1. Download latest OTA zip and kernelsu boot image
+#     OTA zip URL: https:/developers.google.com/android/ota#lynx
+#     kernelsu URL: https://github.com/tiann/kernelsu/releases/latest, download androidNN-5.10.VV_YYYY-MM-boot.img.gz 
+# 1. Run ./patch_n_create_ota.zip <path/to/OTA_zip_file> <path/to/kernelsu_boot_image>
+# 2. Put 3 files from /output directory to http server with path <document root>/Android_OTA/lynx/
+# 3. On Custota app: Set URL: http://<IP>/Android_OTA/lynx/
+# 4. On Custota app: Tick on "Check for update and install update"
+# 5. Reboot your phone
 #
 
 
