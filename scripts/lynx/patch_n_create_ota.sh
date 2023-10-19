@@ -2,17 +2,17 @@
 #
 # This script:
 # - Checks for avbroot and custota-tool update
-# - Patchs OTA zip with KernelSU boot image
+# - Patchs OTA zip with kernelsu boot image
 # - Extracts boot images from patched OTA zip for flashing OTA the first time
 # - Generates Custota json and csig file for OTA server
 #
 # Results: patched OTA zip, custota json, custota csig in output/ directory
 #
 # How to use:
-# 1. Download lastest OTA zip and KernelSU boot image
+# 1. Download latest OTA zip and kernelsu boot image
 #     OTA zip URL: https:/developers.google.com/android/ota#lynx
-#     KernelSU URL: https://github.com/tiann/KernelSU/releases/latest, download androidNN-5.10.VV_YYYY-MM-boot.img.gz 
-# 1. Run ./patch_n_create_ota.zip <OTA zip file> <KernelSU boot image>
+#     kernelsu URL: https://github.com/tiann/kernelsu/releases/latest, download androidNN-5.10.VV_YYYY-MM-boot.img.gz 
+# 1. Run ./patch_n_create_ota.zip <OTA zip file> <kernelsu boot image>
 # 2. Put 3 files from /output directory to http server with path <document root>/OTA-lynx/
 # 3. In Custota app: Set URL: http://<IP>/Android_OTA/lynx/
 # 4. In Custota app: Check for update and install update
@@ -55,107 +55,94 @@ export PASSPHRASE_OTA=""
 
 # OTA server
 OTA_SERVER_SSH_HOST="raspi" # Need pre-configured with ~/.ssh/config
-OTA_SERVER_OTA_PATH="/storage/www/Android_OTA/lynx/"
+OTA_SERVER_OTA_PATH="/storage/www/Android_OTA/lynx/" # Path on remote host where a webserver is configured
 #========================================================
 
-show_syntax() {
-	echo "./$(basename "$0") <OTA zip> <KernelSU patched GKI>"
+
+
+
+function show_syntax() {
+	echo "./$(basename "$0") <OTA zip> <kernelsu patched GKI>"
 	exit 1
 }
 
-OTA_ZIP="$1"
-KERNELSU_BOOT_IMG="$2"
 
-[ ! -f "${OTA_ZIP}" ] && { echo "OTA zip doesn't exist"; show_syntax; }
-[ ! -f "${KERNELSU_BOOT_IMG}" ] && { echo "KernelSU patched GKI doesn't exist"; show_syntax; }
+function update_binaries() {
+	avbroot_latest_url="https://github.com/chenxiaolong/avbroot/releases/latest"
+	avbroot_latest_ver=`curl -Ls -o /dev/null -w %{url_effective} ${avbroot_latest_url} | tr '/' '\n' | tail -n 1 | tr -d 'v'`
+	avbroot_download_url="https://github.com/chenxiaolong/avbroot/releases/download/v${avbroot_latest_ver}/avbroot-${avbroot_latest_ver}-x86_64-unknown-linux-gnu.zip"
 
-KERNELSU_PATCHED_OTA_ZIP_NAME=`echo $(basename -s .zip ${OTA_ZIP})_$(basename -s .img ${KERNELSU_BOOT_IMG})_PATCHED.zip`
+	custota_latest_url="https://github.com/chenxiaolong/custota/releases/latest"
+	custota_latest_ver=`curl -Ls -o /dev/null -w %{url_effective} ${custota_latest_url} | tr '/' '\n' | tail -n 1 | tr -d 'v'`
+	custota_download_url="https://github.com/chenxiaolong/custota/releases/download/v${custota_latest_ver}/custota-tool-${custota_latest_ver}-x86_64-unknown-linux-gnu.zip"
 
-mkdir -p bin
-mkdir -p output
-mkdir -p extracted-ota
-find output/ -maxdepth 1 -type f -type d -delete
+	if [ ! -f bin/avbroot_${avbroot_latest_ver} ]; then
+		echo "[info] Updating avbroot to version ${avbroot_latest_ver}"
+		wget -q ${avbroot_download_url} -O tmp/avbroot_${avbroot_latest_ver}.zip
+		unzip -p tmp/avbroot_${avbroot_latest_ver}.zip avbroot > bin/avbroot_${avbroot_latest_ver} && chmod +x bin/avbroot_${avbroot_latest_ver}
+		[ -L bin/avbroot ] && rm bin/avbroot
+	else
+		echo "[info] avbroot is up-to-date with version ${avbroot_latest_ver}"
+	fi
+	[ ! -L bin/avbroot ] && ln -s avbroot_${avbroot_latest_ver} bin/avbroot
 
-
-##### Download lastest avbroot and custota binary #####
-avbroot_lastest_url="https://github.com/chenxiaolong/avbroot/releases/latest"
-avbroot_lastest_ver=`curl -Ls -o /dev/null -w %{url_effective} ${avbroot_lastest_url} | tr '/' '\n' | tail -n 1 | tr -d 'v'`
-avbroot_download_url="https://github.com/chenxiaolong/avbroot/releases/download/v${avbroot_lastest_ver}/avbroot-${avbroot_lastest_ver}-x86_64-unknown-linux-gnu.zip"
-
-custota_lastest_url="https://github.com/chenxiaolong/custota/releases/latest"
-custota_lastest_ver=`curl -Ls -o /dev/null -w %{url_effective} ${custota_lastest_url} | tr '/' '\n' | tail -n 1 | tr -d 'v'`
-custota_download_url="https://github.com/chenxiaolong/custota/releases/download/v${custota_lastest_ver}/custota-tool-${custota_lastest_ver}-x86_64-unknown-linux-gnu.zip"
-
-if [ ! -f bin/avbroot_${avbroot_lastest_ver} ]; then
-	echo "[info] Updating avbroot"
-	wget -q ${avbroot_download_url} -O tmp/avbroot_${avbroot_lastest_ver}.zip
-	unzip -p tmp/avbroot_${avbroot_lastest_ver}.zip avbroot > bin/avbroot_${avbroot_lastest_ver}
-	[ -L bin/avbroot ] && rm bin/avbroot
-	ln -s bin/avbroot_${avbroot_lastest_ver} bin/avbroot
-	chmod +x bin/avbroot_${avbroot_lastest_ver}
-else
-	echo "[info] avbroot is up-to-date"
-fi
-
-if [ ! -f bin/custota-tool_${custota_lastest_ver} ]; then
-	echo "[info] Updating custota-tool"
-	wget -q ${custota_download_url} -O tmp/custota_${custota_lastest_ver}.zip
-	unzip -p tmp/custota_${custota_lastest_ver}.zip custota-tool > bin/custota-tool_${custota_lastest_ver}
-	[ -L bin/custota-tool ] && rm bin/custota-tool
-	ln -s bin/avbroot_${avbroot_lastest_ver} bin/custota-tool
-	chmod +x bin/custota-tool_${custota_lastest_ver}
-else
-	echo "[info] custota-tool is up-to-date"
-fi
-
-
-##### Patch OTA with KernelSU patched boot image #####
-patch_with_KernelSU() {
-echo -e "[info] Patching OTA zip: ${OTA_ZIP} using KernelSU patched boot image: ${KERNELSU_BOOT_IMG}"
-bin/avbroot \
-	ota patch \
-	--input ${OTA_ZIP} \
-	--privkey-avb ${AVB_KEY} \
-	--privkey-ota ${OTA_KEY} \
-	--cert-ota ${OTA_CRT} \
-	--prepatched ${KERNELSU_BOOT_IMG} \
-	--boot-partition @gki_kernel \
-	--ignore-prepatched-compat --ignore-prepatched-compat\
-	--clear-vbmeta-flags \
-	--passphrase-avb-env-var PASSPHRASE_AVB \
-	--passphrase-ota-env-var PASSPHRASE_OTA \
-	--output ${KERNELSU_PATCHED_OTA_ZIP_NAME}
+	if [ ! -f bin/custota-tool_${custota_latest_ver} ]; then
+		echo "[info] Updating custota-tool to version ${custota_latest_ver}"
+		wget -q ${custota_download_url} -O tmp/custota_${custota_latest_ver}.zip
+		unzip -p tmp/custota_${custota_latest_ver}.zip custota-tool > bin/custota-tool_${custota_latest_ver} && chmod +x bin/custota-tool_${custota_latest_ver}
+		[ -L bin/custota-tool ] && rm bin/custota-tool
+	else
+		echo "[info] custota-tool is up-to-date with version ${custota_latest_ver}"
+	fi
+	[ ! -L bin/custota-tool ] && ln -s custota-tool_${avbroot_latest_ver} bin/custota-tool
+	
 }
 
 
-##### Extract boot images to be flashed by fastboot #####
-extract_pre_installation() {
-echo "[info] Extracting boot images to be flashed by fastboot"
-bin/avbroot \
-	ota extract \
-	--input ${KERNELSU_PATCHED_OTA_ZIP_NAME} \
-	--directory extracted-ota
+function patch_with_kernelsu() {
+	echo -e "[info] Patching OTA zip: ${OTA_ZIP} using kernelsu patched boot image: ${KERNELSU_BOOT_IMG}"
+	bin/avbroot \
+		ota patch \
+		--input ${OTA_ZIP} \
+		--privkey-avb ${AVB_KEY} \
+		--privkey-ota ${OTA_KEY} \
+		--cert-ota ${OTA_CRT} \
+		--prepatched ${KERNELSU_BOOT_IMG} \
+		--boot-partition @gki_kernel \
+		--ignore-prepatched-compat --ignore-prepatched-compat\
+		--clear-vbmeta-flags \
+		--passphrase-avb-env-var PASSPHRASE_AVB \
+		--passphrase-ota-env-var PASSPHRASE_OTA \
+		--output ${KERNELSU_PATCHED_OTA_ZIP_NAME}
 }
 
 
-##### Generate Custota files for Custota OTA server #####
-generate_custota_files() {
-echo "[info] Generating Custota files for Custota OTA server"
-bin/custota-tool \
-	gen-csig \
-	--input ${KERNELSU_PATCHED_OTA_ZIP_NAME} \
-	--key ${OTA_KEY}\
-	--cert ${OTA_CRT} \
-	--passphrase-env-var PASSPHRASE_OTA
-
-bin/custota-tool \
-	gen-update-info \
-	--file ${DEVICE_CODENAME}.json \
-	--location ${KERNELSU_PATCHED_OTA_ZIP_NAME}
+function extract_pre_installation() {
+	echo "[info] Extracting boot images to be flashed by fastboot"
+	bin/avbroot \
+		ota extract \
+		--input ${KERNELSU_PATCHED_OTA_ZIP_NAME} \
+		--directory extracted-ota
 }
 
-##### Copy OTA files to http server #####
-copy_to_http_server() {
+
+function generate_custota_files() {
+	echo "[info] Generating Custota files for Custota OTA server"
+	bin/custota-tool \
+		gen-csig \
+		--input ${KERNELSU_PATCHED_OTA_ZIP_NAME} \
+		--key ${OTA_KEY}\
+		--cert ${OTA_CRT} \
+		--passphrase-env-var PASSPHRASE_OTA
+
+	bin/custota-tool \
+		gen-update-info \
+		--file ${DEVICE_CODENAME}.json \
+		--location ${KERNELSU_PATCHED_OTA_ZIP_NAME}
+}
+
+
+function copy_to_http_server() {
 	ssh -qn ${OTA_SERVER_SSH_HOST} find ${OTA_SERVER_OTA_PATH} -maxdepth 1 -type f -type d -delete
 	for OTA_files in ${DEVICE_CODENAME}.json ${KERNELSU_PATCHED_OTA_ZIP_NAME}.csig ${KERNELSU_PATCHED_OTA_ZIP_NAME}; do
 		scp output/${OTA_files} ${OTA_SERVER_SSH_HOST}:${OTA_SERVER_OTA_PATH}
@@ -163,11 +150,29 @@ copy_to_http_server() {
 }
 
 
-patch_with_KernelSU
+
+OTA_ZIP="$1"
+KERNELSU_BOOT_IMG="$2"
+
+[ ! -f "${OTA_ZIP}" ] && { echo "OTA zip doesn't exist"; show_syntax; }
+[ ! -f "${KERNELSU_BOOT_IMG}" ] && { echo "kernelsu patched GKI doesn't exist"; show_syntax; }
+
+KERNELSU_PATCHED_OTA_ZIP_NAME=`echo $(basename -s .zip ${OTA_ZIP})_$(basename -s .img ${KERNELSU_BOOT_IMG})_PATCHED.zip`
+
+mkdir -p bin
+mkdir -p output
+mkdir -p extracted-ota
+
+find output/ -maxdepth 1 -type f -type d -delete
+
+
+update_binaries
+patch_with_kernelsu
 extract_pre_installation
 generate_custota_files
-mv -t output ${KERNELSU_PATCHED_OTA_ZIP_NAME} ${DEVICE_CODENAME}.json ${KERNELSU_PATCHED_OTA_ZIP_NAME}.csig
+for output_file in ${KERNELSU_PATCHED_OTA_ZIP_NAME} ${DEVICE_CODENAME}.json ${KERNELSU_PATCHED_OTA_ZIP_NAME}.csig; do
+	mv ${output_file} output/
+done
 copy_to_http_server
-
 
 
